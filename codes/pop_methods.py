@@ -62,53 +62,69 @@ class ResampleGrid2D(object):
     Takes a 2D function defined by (Grid, Values)
     and resamples it to a Reference Grid
 
-    Grids are stored as [X, Y]
+    Grids are stored as [[XX], [YY]] with dimensions [2, N, M]
     """
     def __init__(self, ref_grid):
         self.ref_grid = ref_grid
 
-    def find_nearest(self, XY_ref, XY):
-        xx, yy = XY_ref[0,:,:], XY_ref[1,:,:]
+    def find_nearest(self, XY):
+        """
+        For a given position XY (X_i, Y_j) in the Grid
+        Find the nearest node on the Reference Grid
+        onto which the interpolation will be done
+        :param XY: a list containing [X_i, Y_j]
+        :return: [i_ref, j_ref], [X_ref, Y_ref]
+        """
+        xx, yy = self.ref_grid[0,:,:], self.ref_grid[1,:,:]
         r2 = (xx - XY[0])**2 + (yy - XY[1])**2
         idx = np.unravel_index(np.argmin(r2, axis=None), r2.shape)
-        # print(idx)
         return idx, (xx[idx], yy[idx])
 
-    def interpolate1(self, i_left, j_down, ij_ref, i_right, j_up, data):
-        xy, ff = data[0], data[1]
-        x_ld, y_ld = xy[0, i_left, j_down], xy[1, i_left, j_down]
-        x_lu, y_lu = xy[0, i_left, j_up], xy[1, i_left, j_up]
-        x_ru, y_ru = xy[0, i_right, j_up], xy[1, i_right, j_up]
-        x_rd, y_rd = xy[0, i_right, j_down], xy[1, i_right, j_down]
-
-        i_ref, j_ref = ij_ref[0], ij_ref[1]
-        x_ref, y_ref = self.ref_grid[0, i_ref, j_ref], self.ref_grid[1, i_ref, j_ref]
-        deltas = 1. / ((x_ru - x_lu)*(y_ru - y_rd))
-        x_vec = np.array([x_ru - x_ref, x_ref - x_lu])
-        y_vec = np.array([y_ru - y_ref, y_ref - y_rd])
-        F = np.array([[ff[i_left, j_down], ff[i_left, j_up]],
-                      [ff[i_right, j_down], ff[i_right, j_up]]])
-        f_ref = deltas * np.dot(x_vec, np.dot(F, y_vec))
-        return f_ref
-
     def interpolate_bilinear(self, x, y, F):
-        print(x)
+        """
+        Formula for the Bilinear interpolation
+        :param x: list containing (x1, x_ref, x2)
+        :param y: list containing (y1, x_ref, y2)
+        :param F: matrix containing the values of f at [[11, 12],
+                                                        21, 22]]
+        :return: value of the interpolator at (x_ref, y_ref)
+
+        (x1, y2) --------------------- (x2, y2)
+           |                              |
+           |                              |
+           |            (X_ref, Y_ref)    |
+           |                   *          |
+           |                              |
+        (x1, y1) --------------------- (x2, y1)
+
+        """
         x1, x_ref, x2 = x
         y1, y_ref, y2 = y
         delta_x = (x2 - x1)
         delta_y = (y2 - y1)
         deltas = 1. / delta_x / delta_y
-        print('Delta X:', delta_x)
-        print('Delta Y:', delta_y)
         x_vec = np.array([x2 - x_ref, x_ref - x1])
         y_vec = np.array([y2 - y_ref, y_ref - y1])
         f_ref = deltas * np.dot(x_vec, np.dot(F, y_vec))
-        # print(f_ref)
         return f_ref
 
 
     def interpolate(self, ij, ij_ref, data, mode='fu'):
-
+        """
+        Takes care of the interpolation for a given (x_i, y_j)
+        Depending on the relative position of (x_i, y_j) and the
+        interpolation point (x_ref, y_ref) it takes points
+        located "forward/backward" or "up/down" of (x_i, y_j)
+        :param ij: list containing the indices of the point in the Grid
+        :param ij_ref: list containing the indices of reference point in the  Reference Grid
+        :param data: list containing [Grid, Values]
+        :param mode: how to select the other points of the interpolation
+                        - "fu" Forward - Up (i+1, j+1)
+                        - "fd" Forward - Down (i+1, j-1)
+                        - "bd" Backward - Down (i-1, j-1)
+                        - "bu" Backward - Up (i-1, j+1)
+        :return: value of the interpolation at (x_ref, y_ref)
+        """
         xy, ff = data[0], data[1]
         i, j = ij[0], ij[1]
         i_ref, j_ref = ij_ref[0], ij_ref[1]
@@ -145,8 +161,14 @@ class ResampleGrid2D(object):
 
         return f_ref
 
-
     def resample_grid(self, xy_grid, f_values):
+        """
+        Main function which receives the Grid and the Values
+        and takes care of resampling the Grid onto the Reference Grid
+        :param xy_grid: Grid size:[2, N, M]
+        :param f_values: Values size: [N, M]
+        :return: (resampled) Grid and (interpolated) Values
+        """
         new_grid = self.ref_grid.copy()
         new_values = np.zeros_like(xy_grid[0])
         N, M = xy_grid[0].shape
@@ -157,7 +179,7 @@ class ResampleGrid2D(object):
                 xy = xy_grid[:,i,j]
                 x, y = xy[0], xy[1]
 
-                ij_ref, xy_ref = self.find_nearest(self.ref_grid, xy)
+                ij_ref, xy_ref = self.find_nearest(xy)
                 i_ref, j_ref = ij_ref[0], ij_ref[1]
                 x_ref, y_ref = xy_ref[0], xy_ref[1]
 
@@ -184,12 +206,12 @@ class ResampleGrid2D(object):
         return new_grid, new_values
 
 N = 128
-x_ref = np.linspace(-5, 5, N)
+x_ref = np.linspace(-5.1, 5.1, N)
 xx_ref, yy_ref = np.meshgrid(x_ref, x_ref, indexing='ij')
 ff = xx_ref**2 - yy_ref**2
 ref_grid = np.array([xx_ref, yy_ref])
 
-x = np.linspace(-4, 4, N)
+x = np.linspace(-5, 5, N)
 xx, yy = np.meshgrid(x, x, indexing='ij')
 grid = np.array([xx, yy])
 gg = xx + yy
@@ -207,23 +229,3 @@ plt.imshow(gg)
 plt.colorbar()
 
 plt.show()
-
-
-# resample = ResampleGrid1D(x_ref)
-# x_new, g_new = resample.resample_grid(x, g)
-#
-# plt.figure()
-# plt.plot(x_ref, f, label='base')
-# plt.plot(x, g, label='add')
-# plt.plot(x_new, g_new, label='resampled')
-# plt.legend()
-# plt.show()
-
-
-# print('\nIndex: ', i, j)
-# print('Position: ', xy)
-# print('Nearest Neighbours')
-# print(ij_ref)
-# print(xy_ref)
-#
-# print('Function', f_values[i, j])
