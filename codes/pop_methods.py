@@ -62,7 +62,7 @@ class ResampleGrid2D(object):
     Takes a 2D function defined by (Grid, Values)
     and resamples it to a Reference Grid
 
-    XX, YY Grids are stored as arrays of [N, M, 2]
+    Grids are stored as [X, Y]
     """
     def __init__(self, ref_grid):
         self.ref_grid = ref_grid
@@ -71,10 +71,10 @@ class ResampleGrid2D(object):
         xx, yy = XY_ref[0,:,:], XY_ref[1,:,:]
         r2 = (xx - XY[0])**2 + (yy - XY[1])**2
         idx = np.unravel_index(np.argmin(r2, axis=None), r2.shape)
-        print(idx)
+        # print(idx)
         return idx, (xx[idx], yy[idx])
 
-    def interpolate(self, i_left, j_down, ij_ref, i_right, j_up, data):
+    def interpolate1(self, i_left, j_down, ij_ref, i_right, j_up, data):
         xy, ff = data[0], data[1]
         x_ld, y_ld = xy[0, i_left, j_down], xy[1, i_left, j_down]
         x_lu, y_lu = xy[0, i_left, j_up], xy[1, i_left, j_up]
@@ -91,43 +91,123 @@ class ResampleGrid2D(object):
         f_ref = deltas * np.dot(x_vec, np.dot(F, y_vec))
         return f_ref
 
+    def interpolate_bilinear(self, x, y, F):
+        print(x)
+        x1, x_ref, x2 = x
+        y1, y_ref, y2 = y
+        delta_x = (x2 - x1)
+        delta_y = (y2 - y1)
+        deltas = 1. / delta_x / delta_y
+        print('Delta X:', delta_x)
+        print('Delta Y:', delta_y)
+        x_vec = np.array([x2 - x_ref, x_ref - x1])
+        y_vec = np.array([y2 - y_ref, y_ref - y1])
+        f_ref = deltas * np.dot(x_vec, np.dot(F, y_vec))
+        # print(f_ref)
+        return f_ref
+
+
+    def interpolate(self, ij, ij_ref, data, mode='fu'):
+
+        xy, ff = data[0], data[1]
+        i, j = ij[0], ij[1]
+        i_ref, j_ref = ij_ref[0], ij_ref[1]
+        xi, yi = xy[0, i, j], xy[1, i, j]
+        x_ref, y_ref = self.ref_grid[0, i_ref, j_ref], self.ref_grid[1, i_ref, j_ref]
+
+        if mode=="fu":
+            x = (xi, x_ref, xy[0, i+1, j])
+            y = (yi, y_ref, xy[1, i, j+1])
+            F = np.array([[ff[i, j], ff[i, j+1]],
+                      [ff[i+1, j], ff[i+1, j+1]]])
+            f_ref = self.interpolate_bilinear(x, y, F)
+
+        if mode=="fd":
+            x = (xi, x_ref, xy[0, i+1, j])
+            y = (yi, y_ref, xy[1, i, j-1])
+            F = np.array([[ff[i, j], ff[i, j-1]],
+                      [ff[i+1, j], ff[i+1, j-1]]])
+            f_ref = self.interpolate_bilinear(x, y, F)
+
+        if mode=="bd":
+            x = (xi, x_ref, xy[0, i-1, j])
+            y = (yi, y_ref, xy[1, i, j-1])
+            F = np.array([[ff[i, j], ff[i, j-1]],
+                      [ff[i-1, j], ff[i-1, j-1]]])
+            f_ref = self.interpolate_bilinear(x, y, F)
+
+        if mode=="bu":
+            x = (xi, x_ref, xy[0, i-1, j])
+            y = (yi, y_ref, xy[1, i, j+1])
+            F = np.array([[ff[i, j], ff[i, j+1]],
+                      [ff[i-1, j], ff[i-1, j+1]]])
+            f_ref = self.interpolate_bilinear(x, y, F)
+
+        return f_ref
+
+
     def resample_grid(self, xy_grid, f_values):
         new_grid = self.ref_grid.copy()
-        new_values = np.zeros_like(xy_grid)
-        N, M = xy_grid.shape[0], xy_grid.shape[1]
+        new_values = np.zeros_like(xy_grid[0])
+        N, M = xy_grid[0].shape
 
-        for i in range(N):
-            for j in range(M):
-                # print('\nIndex')
-                # print(i, j)
+        for i in np.arange(1,N-1):
+            for j in np.arange(1,M-1):
+
                 xy = xy_grid[:,i,j]
                 x, y = xy[0], xy[1]
-                # print('Position')
-                # print(xy)
+
                 ij_ref, xy_ref = self.find_nearest(self.ref_grid, xy)
                 i_ref, j_ref = ij_ref[0], ij_ref[1]
                 x_ref, y_ref = xy_ref[0], xy_ref[1]
-                if (x_ref > x) and (y_ref > y): # forward & up
-                    f_new = self.interpolate(i_left=i, j_down=j, ij_ref=ij_ref, i_right=i+1, j_up=j+1, data=[xy_grid, f_values])
-                    print(f_new)
-                    # new_grid[i_ref] = self.ref_grid[i_ref]
-                    # new_values[i_ref] = f_new
 
+                if (x_ref > x) and (y_ref > y):  # forward & up
+                    f_new = self.interpolate([i,j], ij_ref, [xy_grid, f_values], mode='fu')
+                    new_grid[:,i_ref, j_ref] = self.ref_grid[:,i_ref,j_ref]
+                    new_values[i_ref, j_ref] = f_new
+
+                if (x_ref > x) and (y_ref < y):  # forward & down
+                    f_new = self.interpolate([i,j], ij_ref, [xy_grid, f_values], mode='fd')
+                    new_grid[:,i_ref, j_ref] = self.ref_grid[:,i_ref,j_ref]
+                    new_values[i_ref, j_ref] = f_new
+
+                if (x_ref < x) and (y_ref < y):  # backward & down
+                    f_new = self.interpolate([i,j], ij_ref, [xy_grid, f_values], mode='fd')
+                    new_grid[:,i_ref, j_ref] = self.ref_grid[:,i_ref,j_ref]
+                    new_values[i_ref, j_ref] = f_new
+
+                if (x_ref < x) and (y_ref > y):  # backward & up
+                    f_new = self.interpolate([i,j], ij_ref, [xy_grid, f_values], mode='fu')
+                    new_grid[:,i_ref, j_ref] = self.ref_grid[:,i_ref,j_ref]
+                    new_values[i_ref, j_ref] = f_new
+
+        return new_grid, new_values
 
 N = 128
 x_ref = np.linspace(-5, 5, N)
-xx_ref, yy_ref = np.meshgrid(x_ref, x_ref)
+xx_ref, yy_ref = np.meshgrid(x_ref, x_ref, indexing='ij')
 ff = xx_ref**2 - yy_ref**2
 ref_grid = np.array([xx_ref, yy_ref])
 
 x = np.linspace(-4, 4, N)
-xx, yy = np.meshgrid(x, x)
+xx, yy = np.meshgrid(x, x, indexing='ij')
 grid = np.array([xx, yy])
 gg = xx + yy
 
 
 resample = ResampleGrid2D(ref_grid)
-x_new, g_new = resample.resample_grid(grid, gg)
+new_grid, new_values = resample.resample_grid(grid, gg)
+
+plt.figure()
+plt.imshow(new_values)
+plt.colorbar()
+
+plt.figure()
+plt.imshow(gg)
+plt.colorbar()
+
+plt.show()
+
 
 # resample = ResampleGrid1D(x_ref)
 # x_new, g_new = resample.resample_grid(x, g)
@@ -138,3 +218,12 @@ x_new, g_new = resample.resample_grid(grid, gg)
 # plt.plot(x_new, g_new, label='resampled')
 # plt.legend()
 # plt.show()
+
+
+# print('\nIndex: ', i, j)
+# print('Position: ', xy)
+# print('Nearest Neighbours')
+# print(ij_ref)
+# print(xy_ref)
+#
+# print('Function', f_values[i, j])
