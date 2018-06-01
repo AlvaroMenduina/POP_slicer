@@ -174,6 +174,7 @@ class ResampleGrid2D(object):
         N, M = xy_grid[0].shape
 
         for i in np.arange(1,N-1):
+            print('Row #%d' %i)
             for j in np.arange(1,M-1):
 
                 xy = xy_grid[:,i,j]
