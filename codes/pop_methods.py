@@ -205,27 +205,6 @@ class ResampleGrid2D(object):
 
         return new_grid, new_values
 
-N = 128
-x_ref = np.linspace(-5.1, 5.1, N)
-xx_ref, yy_ref = np.meshgrid(x_ref, x_ref, indexing='ij')
-ff = xx_ref**2 - yy_ref**2
-ref_grid = np.array([xx_ref, yy_ref])
 
-x = np.linspace(-5, 5, N)
-xx, yy = np.meshgrid(x, x, indexing='ij')
-grid = np.array([xx, yy])
-gg = xx + yy
-
-
-resample = ResampleGrid2D(ref_grid)
-new_grid, new_values = resample.resample_grid(grid, gg)
-
-plt.figure()
-plt.imshow(new_values)
-plt.colorbar()
-
-plt.figure()
-plt.imshow(gg)
-plt.colorbar()
 
 plt.show()
