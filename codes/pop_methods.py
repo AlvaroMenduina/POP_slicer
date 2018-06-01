@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from time import time as tm
 
 
 N = 1024
@@ -174,13 +175,15 @@ class ResampleGrid2D(object):
         N, M = xy_grid[0].shape
 
         for i in np.arange(1,N-1):
-            print('Row #%d' %i)
+            # print('Row #%d' %i)
             for j in np.arange(1,M-1):
 
                 xy = xy_grid[:,i,j]
                 x, y = xy[0], xy[1]
 
+                # start = tm()
                 ij_ref, xy_ref = self.find_nearest(xy)
+                # print('Find Nearest: %f [sec]' %(tm() - start))
                 i_ref, j_ref = ij_ref[0], ij_ref[1]
                 x_ref, y_ref = xy_ref[0], xy_ref[1]
 
@@ -205,7 +208,5 @@ class ResampleGrid2D(object):
                     new_values[i_ref, j_ref] = f_new
 
         return new_grid, new_values
-
-
 
 plt.show()

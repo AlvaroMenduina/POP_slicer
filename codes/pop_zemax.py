@@ -65,9 +65,24 @@ def read_all_zemax_files(start=1, finish=55):
 
     return beam_info, irradiance_values
 
+def crop_arrays(beam_info, irradiance_values, N_pix=512):
+    N_slices = beam_info.shape[0]
+    N = irradiance_values.shape[1]
+    pix_min = N//2 - N_pix//2
+    pix_max = N//2 + N_pix//2
+    new_beam_info = beam_info.copy()
+    new_irradiance = np.zeros((N_slices, N_pix, N_pix))
+    for k in range(N_slices):
+        new_beam_info[k, 1:3] *= (N_pix/N)
+        data = irradiance_values[k]
+        new_irradiance[k] = data[pix_min:pix_max, pix_min:pix_max]
+    return new_beam_info, new_irradiance
+
 def resample_grids(beam_info, irradiance_values):
 
     N_slices = beam_info.shape[0]
+    N = irradiance_values.shape[1]
+    M = irradiance_values.shape[2]
 
     # Find the widest grid
     i_max = beam_info[:, 1].argmax()
@@ -96,6 +111,8 @@ def resample_grids(beam_info, irradiance_values):
 
     xx_ref, yy_ref = np.meshgrid(x, y, indexing='ij')
     ref_grid = np.array([xx_ref, yy_ref])
+    print('Reference Grid Shape')
+    print(ref_grid.shape)
     resampler = pop.ResampleGrid2D(ref_grid)
 
     grids = []
@@ -108,9 +125,11 @@ def resample_grids(beam_info, irradiance_values):
         x = np.linspace(-D_x / 2., D_x / 2, num=N, endpoint=True)
         y = np.linspace(-D_y / 2., D_y / 2, num=M, endpoint=True)
         xx, yy = np.meshgrid(x, y, indexing='ij')
+        print('Grid shape')
         grid = np.array([xx, yy])
+        print(grid.shape)
 
-        if k == max_ID: # No need to resample
+        if beam_info[k,0] == max_ID: # No need to resample
             print('No need to resample')
             grids.append(grid)
             new_values.append(irradiance_values[k])
@@ -194,14 +213,16 @@ if __name__ == "__main__":
         datas.append(data)
         beam_info.append(numbers)
 
-        plt.figure()
-        plt.imshow(data, origin='lower', cmap='jet')
-        plt.colorbar()
+        # plt.figure()
+        # plt.imshow(data, origin='lower', cmap='jet')
+        # plt.colorbar()
 
     datas = np.array(datas)
     beam_info = np.array(beam_info)
 
-    no_resampling = np.sum(datas, axis=0)
+    new_beam_info, new_data = crop_arrays(beam_info, datas, N_pix=256)
+
+    no_resampling = np.sum(new_data, axis=0)
 
     plt.figure()
     plt.imshow(no_resampling, origin='lower', cmap='jet')
@@ -212,8 +233,28 @@ if __name__ == "__main__":
     plt.imshow(np.log10(no_resampling), origin='lower', cmap='jet')
     plt.colorbar()
     plt.title('Without Resampling (Log10 scale)')
+
+
     # resample
-    # resample_grids(beam_info, datas)
+    grids, resampled_data = resample_grids(new_beam_info, new_data)
+
+    resampled = np.sum(resampled_data, axis=0)
+
+    plt.figure()
+    plt.imshow(resampled, origin='lower', cmap='jet')
+    plt.colorbar()
+    plt.title('With Resampling')
+
+    plt.figure()
+    plt.imshow(np.log10(resampled), origin='lower', cmap='jet')
+    plt.colorbar()
+    plt.title('With Resampling (Log10 scale)')
+
+    # Difference
+    plt.figure()
+    plt.imshow(resampled - no_resampling, origin='lower', cmap='jet')
+    plt.colorbar()
+    plt.title('Residual')
 
 
     plt.show()
