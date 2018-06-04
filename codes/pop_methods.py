@@ -9,10 +9,16 @@ from time import time as tm
 # ============================================================================== #
 
 def read_beam_file(file_name, mode='irradiance'):
+    """
+    Reads a Zemax Beam File and returns either the Irradiance or the Phase
+    of the Magnetic field E
+    """
     beamData = readBeamFile(file_name)
     (version, (nx, ny), ispol, units, (dx, dy), (zposition_x, zposition_y),
      (rayleigh_x, rayleigh_y), (waist_x, waist_y), lamda, index, re, se,
      (x_matrix, y_matrix), (Ex_real, Ex_imag, Ey_real, Ey_imag)) = beamData
+
+    area = (1e-3*nx*dx) * (1e-3*ny*dy)
 
     E_real = np.array([Ex_real, Ey_real])
     E_imag = np.array([Ex_imag, Ey_imag])
@@ -28,24 +34,27 @@ def read_beam_file(file_name, mode='irradiance'):
         phase = np.arctan2(im, re)
         return (nx, ny), (dx, dy), phase
 
-def read_all_zemax_files(path_zemax, start=1, finish=55, mode='irradiance'):
+def read_all_zemax_files(path_zemax, name_convention, start=1, finish=55, mode='irradiance'):
     """
     Goes through the ZBF Zemax Beam Files of all Slices and
     extracts the beam information (X_size, Y_size) etc
     as well as the Irradiance distribution
     """
-
     info = []
     data = []
-    # path_zemax = os.path.join('zemax_files', 'SlicerTwisted_006f6a_POP')
 
     for k in np.arange(start, finish+1):
-        print('\======================================')
+        print('\n======================================')
+
         if k < 10:
-            file_id = 'SlicerTwisted_006f6a_POP_ ' + str(k) + '_POP.ZBF'
+            # file_id = 'SlicerTwisted_006f6a_POP_ ' + str(k) + '_POP.ZBF'
+            file_id = name_convention + ' ' + str(k) + '_POP.ZBF'
         else:
-            file_id = 'SlicerTwisted_006f6a_POP_' + str(k) + '_POP.ZBF'
+            # file_id = 'SlicerTwisted_006f6a_POP_' + str(k) + '_POP.ZBF'
+            file_id = name_convention + str(k) + '_POP.ZBF'
         file_name = os.path.join(path_zemax, file_id)
+
+        print('Reading Beam File: ', file_id)
 
         NM, deltas, beam_data = read_beam_file(file_name, mode=mode)
         Dx, Dy = NM[0] * deltas[0], NM[1] * deltas[1]
@@ -61,16 +70,6 @@ def read_all_zemax_files(path_zemax, start=1, finish=55, mode='irradiance'):
 #                                GRID RESAMPLING                                 #
 # ============================================================================== #
 
-# method to read the files
-
-# method to collapse without resampling
-# and with resampling
-
-class POP_Slicer(object):
-
-    def __init__(self):
-        pass
-
 def crop_arrays(beam_info, irradiance_values, N_pix=512):
     N_slices = beam_info.shape[0]
     N = irradiance_values.shape[1]
@@ -84,71 +83,114 @@ def crop_arrays(beam_info, irradiance_values, N_pix=512):
         new_irradiance[k] = data[pix_min:pix_max, pix_min:pix_max]
     return new_beam_info, new_irradiance
 
-def resample_grids(beam_info, irradiance_values):
+# method to read the files
 
-    N_slices = beam_info.shape[0]
-    N = irradiance_values.shape[1]
-    M = irradiance_values.shape[2]
+# method to collapse without resampling
+# and with resampling
 
-    # Find the widest grid
-    i_max = beam_info[:, 1].argmax()
-    j_max = beam_info[:, 2].argmax()
+class POP_Slicer(object):
+    """
+    Physical Optics Propagation (POP) analysis of an Image Slicer
 
-    # In case (i_max != j_max)
-    if i_max != j_max:
-        x_max = max(beam_info[i_max, 1], beam_info[j_max, 1])
-        y_max = max(beam_info[j_max, 2], beam_info[i_max, 2])
-        # No slicer is "exactly" the reference grid
-        max_ID = 9999
-        print('\nNo particular slice has both Max X and Max Y')
-        print('Resampling all grids to (X_max, Y_max): ', (x_max, y_max))
-        print('\n')
-    else:
-        x_max = beam_info[i_max, 1]
-        y_max = beam_info[j_max, 2]
-        max_ID = beam_info[i_max, 0]
-        print('\nSlice #%d is the largest with (X_max, Y_max): (%f, %f)' %(max_ID, x_max, y_max))
-        print('Resampling the rest of grids to that reference')
-        print('\n')
 
-    # Create the Reference Grid
-    x = np.linspace(-x_max/2., x_max/2, num=N, endpoint=True)
-    y = np.linspace(-y_max/2., y_max/2, num=M, endpoint=True)
+    """
 
-    xx_ref, yy_ref = np.meshgrid(x, y, indexing='ij')
-    ref_grid = np.array([xx_ref, yy_ref])
-    print('Reference Grid Shape')
-    print(ref_grid.shape)
-    resampler = pop.ResampleGrid2D(ref_grid)
+    def __init__(self):
+        pass
 
-    grids = []
-    new_values = []
+    def get_zemax_files(self, zemax_path, name_convention, start, finish, mode):
+        _info, _data = read_all_zemax_files(zemax_path, name_convention, start, finish, mode)
+        self.beam_info = _info
+        self.beam_data = _data
 
-    # Iterate over all slices
-    for k in range(N_slices):
-        print('\nSlice #%d' %(beam_info[k,0]))
-        D_x, D_y = beam_info[k, 1], beam_info[k, 2]
-        x = np.linspace(-D_x / 2., D_x / 2, num=N, endpoint=True)
-        y = np.linspace(-D_y / 2., D_y / 2, num=M, endpoint=True)
-        xx, yy = np.meshgrid(x, y, indexing='ij')
-        print('Grid shape')
-        grid = np.array([xx, yy])
-        print(grid.shape)
+    def crop_arrays(self, N_pix=512):
 
-        if beam_info[k,0] == max_ID: # No need to resample
-            print('No need to resample')
-            grids.append(grid)
-            new_values.append(irradiance_values[k])
+        N_slices = self.beam_info.shape[0]
+        N = self.beam_data.shape[1]
+        pix_min = N // 2 - N_pix // 2
+        pix_max = N // 2 + N_pix // 2
+        new_beam_info = self.beam_info.copy()
+        new_irradiance = np.zeros((N_slices, N_pix, N_pix))
+        for k in range(N_slices):
+            new_beam_info[k, 1:3] *= (N_pix / N)
+            data = self.beam_data[k]
+            new_irradiance[k] = data[pix_min:pix_max, pix_min:pix_max]
 
+        self.cropped_beam_info = new_beam_info
+        self.cropped_beam_data = new_irradiance
+
+    def resample_grids(self):
+
+        try:
+            beam_info = self.cropped_beam_info
+            irradiance_values = self.cropped_beam_data
+        except AttributeError:
+            beam_info = self.beam_info
+            irradiance_values = self.beam_data
+
+        N_slices = beam_info.shape[0]
+        N = irradiance_values.shape[1]
+        M = irradiance_values.shape[2]
+
+        # Find the widest grid
+        i_max = beam_info[:, 1].argmax()
+        j_max = beam_info[:, 2].argmax()
+
+        # In case (i_max != j_max)
+        if i_max != j_max:
+            x_max = max(beam_info[i_max, 1], beam_info[j_max, 1])
+            y_max = max(beam_info[j_max, 2], beam_info[i_max, 2])
+            # No slicer is "exactly" the reference grid
+            max_ID = 9999
+            print('\nNo particular slice has both Max X and Max Y')
+            print('Resampling all grids to (X_max, Y_max): ', (x_max, y_max))
+            print('\n')
         else:
-            new_grid, new_value = resampler.resample_grid(grid, irradiance_values[k])
-            grids.append(new_grid)
-            new_values.append(new_value)
+            x_max = beam_info[i_max, 1]
+            y_max = beam_info[j_max, 2]
+            max_ID = beam_info[i_max, 0]
+            print('\nSlice #%d is the largest with (X_max, Y_max): (%f, %f)' %(max_ID, x_max, y_max))
+            print('Resampling the rest of grids to that reference')
+            print('\n')
 
-    grids = np.array(grids)
-    new_values = np.array(new_values)
+        # Create the Reference Grid
+        x = np.linspace(-x_max/2., x_max/2, num=N, endpoint=True)
+        y = np.linspace(-y_max/2., y_max/2, num=M, endpoint=True)
 
-    return grids, new_values
+        xx_ref, yy_ref = np.meshgrid(x, y, indexing='ij')
+        ref_grid = np.array([xx_ref, yy_ref])
+        print('Reference Grid Shape')
+        print(ref_grid.shape)
+        resampler = ResampleGrid2D(ref_grid)
+
+        grids = []
+        new_values = []
+
+        # Iterate over all slices
+        for k in range(N_slices):
+            print('\nSlice #%d' %(beam_info[k,0]))
+            D_x, D_y = beam_info[k, 1], beam_info[k, 2]
+            x = np.linspace(-D_x / 2., D_x / 2, num=N, endpoint=True)
+            y = np.linspace(-D_y / 2., D_y / 2, num=M, endpoint=True)
+            xx, yy = np.meshgrid(x, y, indexing='ij')
+            print('Grid shape')
+            grid = np.array([xx, yy])
+            print(grid.shape)
+
+            if beam_info[k,0] == max_ID: # No need to resample
+                print('No need to resample')
+                grids.append(grid)
+                new_values.append(irradiance_values[k])
+
+            else:
+                new_grid, new_value = resampler.resample_grid(grid, irradiance_values[k])
+                grids.append(new_grid)
+                new_values.append(new_value)
+
+        grids = np.array(grids)
+        new_values = np.array(new_values)
+
+        return grids, new_values
 
 class ResampleGrid1D(object):
     """
@@ -249,7 +291,6 @@ class ResampleGrid2D(object):
         f_ref = deltas * np.dot(x_vec, np.dot(F, y_vec))
         return f_ref
 
-
     def interpolate(self, ij, ij_ref, data, mode='fu'):
         """
         Takes care of the interpolation for a given (x_i, y_j)
@@ -299,6 +340,10 @@ class ResampleGrid2D(object):
             F = np.array([[ff[i, j], ff[i, j+1]],
                       [ff[i-1, j], ff[i-1, j+1]]])
             f_ref = self.interpolate_bilinear(x, y, F)
+
+        # Make sure your interpolation doesn't give you a NEGATIVE value
+        if f_ref < 0.0:
+            f_ref = ff[i, j]
 
         return f_ref
 
