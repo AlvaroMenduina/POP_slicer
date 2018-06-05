@@ -1,30 +1,30 @@
 import os
-import re
 import numpy as np
 import matplotlib.pyplot as plt
 import pop_methods as pop
-
-# Beam Parameters
-wave = 0.8                          # Wavelength [microns]
 
 if __name__ == "__main__":
 
     name_convention = 'SlicerTwisted_006f6a_POP_'
     path_zemax = os.path.join('zemax_files', 'SlicerTwisted_006f6a_POP')
-    info, data = pop.read_all_zemax_files(path_zemax, name_convention,
+
+    pop_slicer = pop.POP_Slicer()
+    pop_slicer.get_zemax_files(path_zemax, name_convention,
                                           start=1, finish=55,
                                           mode='irradiance')
+    pop_slicer.crop_arrays(N_pix=256)
+    grids, resampled_data = pop_slicer.resample_grids()
 
-    new_beam_info, new_data = pop.crop_arrays(info, data, N_pix=256)
-
-    no_resampling = np.sum(new_data, axis=0)
-
-    grids, resampled_data = pop.resample_grids(new_beam_info, new_data)
+    no_resampling = np.sum(pop_slicer.beam_data, axis=0)
 
     resampled = np.sum(resampled_data, axis=0)
 
     v_max = max(no_resampling.max(), resampled.max())
     v_min = min(no_resampling[np.nonzero(no_resampling)].min(), resampled[np.nonzero(resampled)].min())
+
+    # Add collapsed result to the Beam array
+    final_data = np.concatenate((resampled[np.newaxis,:,:], resampled_data))
+    pop.save_to_fits(os.path.join('fits_files','SlicerTwisted'), final_data)
 
     """ Quick Way: Disregard any resampling """
     plt.figure()

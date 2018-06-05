@@ -2,7 +2,22 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from pyzdde.zdde import readBeamFile
+from astropy.io import fits
 from time import time as tm
+
+# ============================================================================== #
+#                                .FITS FILES                                     #
+# ============================================================================== #
+
+def save_to_fits(file_name, beam_data):
+
+    hdul = fits.PrimaryHDU()
+    hdul.data = beam_data
+
+    fits_name = file_name + '.fits'
+    hdul.writeto(fits_name)
+    print('\nSaving file: ', fits_name)
+
 
 # ============================================================================== #
 #                                ZEMAX INTERFACE                                 #
@@ -26,12 +41,14 @@ def read_beam_file(file_name, mode='irradiance'):
     re = np.linalg.norm(E_real, axis=0)
     im = np.linalg.norm(E_imag, axis=0)
 
+    #FIXME why are the arrays flipped?
+
     if mode=='irradiance':
         irradiance = (re ** 2 + im ** 2).T
         return (nx, ny), (dx, dy), irradiance
 
     if mode=='phase':
-        phase = np.arctan2(im, re)
+        phase = np.arctan2(im, re).T
         return (nx, ny), (dx, dy), phase
 
 def read_all_zemax_files(path_zemax, name_convention, start=1, finish=55, mode='irradiance'):
@@ -70,24 +87,6 @@ def read_all_zemax_files(path_zemax, name_convention, start=1, finish=55, mode='
 #                                GRID RESAMPLING                                 #
 # ============================================================================== #
 
-def crop_arrays(beam_info, irradiance_values, N_pix=512):
-    N_slices = beam_info.shape[0]
-    N = irradiance_values.shape[1]
-    pix_min = N//2 - N_pix//2
-    pix_max = N//2 + N_pix//2
-    new_beam_info = beam_info.copy()
-    new_irradiance = np.zeros((N_slices, N_pix, N_pix))
-    for k in range(N_slices):
-        new_beam_info[k, 1:3] *= (N_pix/N)
-        data = irradiance_values[k]
-        new_irradiance[k] = data[pix_min:pix_max, pix_min:pix_max]
-    return new_beam_info, new_irradiance
-
-# method to read the files
-
-# method to collapse without resampling
-# and with resampling
-
 class POP_Slicer(object):
     """
     Physical Optics Propagation (POP) analysis of an Image Slicer
@@ -120,6 +119,18 @@ class POP_Slicer(object):
         self.cropped_beam_data = new_irradiance
 
     def resample_grids(self):
+        """
+        Takes care of resampling each of the Slice Grids to a
+        Reference Grid which is the widest of all.
+
+        The aim is for all Irradiance arrays to have the same
+        physical dimensions! Although they initially have the same
+        number of pixels, they represent slightly different X, Y
+        dimensions.
+
+        That information is stored in the Beam Info arrays
+        and comes from the Zemax Beam Files
+        """
 
         try:
             beam_info = self.cropped_beam_info
@@ -131,6 +142,9 @@ class POP_Slicer(object):
         N_slices = beam_info.shape[0]
         N = irradiance_values.shape[1]
         M = irradiance_values.shape[2]
+
+        print('Grids to resample: (N, M) = (%d, %d)' %(N, M))
+        start = tm()
 
         # Find the widest grid
         i_max = beam_info[:, 1].argmax()
@@ -173,11 +187,10 @@ class POP_Slicer(object):
             x = np.linspace(-D_x / 2., D_x / 2, num=N, endpoint=True)
             y = np.linspace(-D_y / 2., D_y / 2, num=M, endpoint=True)
             xx, yy = np.meshgrid(x, y, indexing='ij')
-            print('Grid shape')
             grid = np.array([xx, yy])
-            print(grid.shape)
 
-            if beam_info[k,0] == max_ID: # No need to resample
+            # Check whether we resample or pass
+            if beam_info[k,0] == max_ID:
                 print('No need to resample')
                 grids.append(grid)
                 new_values.append(irradiance_values[k])
@@ -189,6 +202,11 @@ class POP_Slicer(object):
 
         grids = np.array(grids)
         new_values = np.array(new_values)
+
+        speed = (tm() - start)
+        print('\nTotal time to resample: %.1f [sec]' %speed)
+        print('Average time per slice: %.1f [sec]' %(speed/N_slices))
+        print('Average time per slice per grid node: %.1f [sec]' %(speed/N_slices/N/M))
 
         return grids, new_values
 
