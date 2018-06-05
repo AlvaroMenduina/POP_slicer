@@ -24,7 +24,7 @@ if __name__ == "__main__":
         raw_data = pop_slicer.beam_data.copy()
         raw_info = pop_slicer.beam_info.copy()
 
-    pop_slicer.crop_arrays(N_pix=128)
+    pop_slicer.crop_arrays(N_pix=256)
     grids, resampled_data = pop_slicer.resample_grids(mode='pyresample')
 
     no_resampling = np.sum(pop_slicer.cropped_beam_data, axis=0)
