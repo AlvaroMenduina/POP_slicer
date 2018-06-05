@@ -5,6 +5,7 @@ Physical Optics Propagation (POP) analysis of Image Slicers for ELT-HARMONI and 
 ## Methodology
 
 POP analysis is done using Zemax. The output is a set of Zemax Beam Files (ZBF), one for each of the Slices within the Image Slicer. Those files are loaded with Python and post-processed to generate a single PSF.
+![Alt text](sample.png?raw=true "Title")
 
 ## Machine Learning capabilities
 TO DO!
