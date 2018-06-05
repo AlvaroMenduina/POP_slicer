@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pyzdde.zdde import readBeamFile
 from astropy.io import fits
 from time import time as tm
+from pyresample import utils, image, geometry
 
 # ============================================================================== #
 #                                .FITS FILES                                     #
@@ -15,9 +16,8 @@ def save_to_fits(file_name, beam_data):
     hdul.data = beam_data
 
     fits_name = file_name + '.fits'
-    hdul.writeto(fits_name)
+    hdul.writeto(fits_name, overwrite=True)
     print('\nSaving file: ', fits_name)
-
 
 # ============================================================================== #
 #                                ZEMAX INTERFACE                                 #
@@ -81,6 +81,8 @@ def read_all_zemax_files(path_zemax, name_convention, start=1, finish=55, mode='
     beam_info = np.array(info)
     irradiance_values = np.array(data)
 
+    # print('\nTime spent LOADING files: %.1f [sec]' %(tm() - start))
+
     return beam_info, irradiance_values
 
 # ============================================================================== #
@@ -118,7 +120,33 @@ class POP_Slicer(object):
         self.cropped_beam_info = new_beam_info
         self.cropped_beam_data = new_irradiance
 
-    def resample_grids(self):
+    def pyresample_method(self, ref_grid_lim, grid_lim, data):
+        """
+        Method which uses the library "pyresample" which is must faster
+        """
+        # FIXME: Understand how Proj_Dict influences the result
+
+        X_MAX, Y_MAX = ref_grid_lim
+        x_max, y_max = grid_lim
+
+        N, M = data.shape
+
+        proj_dict = {'a': '6371228.0', 'units': 'm', 'lon_0': '0',
+                     'proj': 'laea', 'lat_0': '-90'}
+        ref_area = geometry.AreaDefinition(area_id='REF', name='reference', proj_id='A',
+                                           proj_dict=proj_dict, x_size=N, y_size=M,
+                                           area_extent=[-X_MAX, -Y_MAX, X_MAX, Y_MAX])
+
+        init_area = geometry.AreaDefinition(area_id='INIT', name='initial', proj_id='A',
+                                            proj_dict=proj_dict, x_size=N, y_size=M,
+                                            area_extent=[-x_max, -y_max, x_max, y_max])
+
+        base = image.ImageContainer(data, init_area)
+        row_indices, col_indices = utils.generate_quick_linesample_arrays(init_area, ref_area)
+        result = base.get_array_from_linesample(row_indices, col_indices)
+        return result
+
+    def resample_grids(self, mode='pyresample'):
         """
         Takes care of resampling each of the Slice Grids to a
         Reference Grid which is the widest of all.
@@ -130,6 +158,10 @@ class POP_Slicer(object):
 
         That information is stored in the Beam Info arrays
         and comes from the Zemax Beam Files
+
+        modes:
+            - 'homemade': hard-coded slow method but it works
+            - 'pyresample': fast library but not 100% sure
         """
 
         try:
@@ -196,9 +228,14 @@ class POP_Slicer(object):
                 new_values.append(irradiance_values[k])
 
             else:
-                new_grid, new_value = resampler.resample_grid(grid, irradiance_values[k])
-                grids.append(new_grid)
-                new_values.append(new_value)
+                if mode=='homemade':
+                    new_grid, new_value = resampler.resample_grid(grid, irradiance_values[k])
+                    grids.append(new_grid)
+                    new_values.append(new_value)
+                if mode=='pyresample':
+                    new_value = self.pyresample_method([x_max/2, y_max/2], [D_x/2, D_y/2], irradiance_values[k])
+                    grids.append(ref_grid)
+                    new_values.append(new_value)
 
         grids = np.array(grids)
         new_values = np.array(new_values)

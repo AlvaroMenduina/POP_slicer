@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import pop_methods as pop
@@ -9,13 +10,24 @@ if __name__ == "__main__":
     path_zemax = os.path.join('zemax_files', 'SlicerTwisted_006f6a_POP')
 
     pop_slicer = pop.POP_Slicer()
-    pop_slicer.get_zemax_files(path_zemax, name_convention,
-                                          start=1, finish=55,
-                                          mode='irradiance')
-    pop_slicer.crop_arrays(N_pix=256)
-    grids, resampled_data = pop_slicer.resample_grids()
 
-    no_resampling = np.sum(pop_slicer.beam_data, axis=0)
+    if sys.argv[-1] == 'load':
+        raw_data = np.load('raw_data.npy')
+        raw_info = np.load('raw_info.npy')
+        pop_slicer.beam_data = raw_data
+        pop_slicer.beam_info = raw_info
+    else:
+        pop_slicer.get_zemax_files(path_zemax, name_convention,
+                                   start=1, finish=55, mode='irradiance')
+        # Keep a copy after loading in case there is a bug in pop_slicer
+        # Loading the files takes so long...!
+        raw_data = pop_slicer.beam_data.copy()
+        raw_info = pop_slicer.beam_info.copy()
+
+    pop_slicer.crop_arrays(N_pix=128)
+    grids, resampled_data = pop_slicer.resample_grids(mode='pyresample')
+
+    no_resampling = np.sum(pop_slicer.cropped_beam_data, axis=0)
 
     resampled = np.sum(resampled_data, axis=0)
 
@@ -50,7 +62,7 @@ if __name__ == "__main__":
 
     """ Comparison difference """
     plt.figure()
-    plt.imshow(np.log10(np.abs(resampled - no_resampling)/no_resampling), origin='lower', cmap='jet')
+    plt.imshow((np.abs(no_resampling - resampled)), origin='lower', cmap='jet')
     plt.colorbar()
     # plt.title('Residual')
     plt.title('Relative difference (With - Without)/Without [log10 scale]')
