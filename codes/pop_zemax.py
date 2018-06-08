@@ -6,14 +6,19 @@ import pop_methods as pop
 
 if __name__ == "__main__":
 
-    name_convention = 'SlicerTwisted_006f6a_POP_'
-    path_zemax = os.path.join('zemax_files', 'SlicerTwisted_006f6a_POP')
+    # name_convention = 'SlicerTwisted_006f6a_POP_'
+    # path_zemax = os.path.join('zemax_files', 'NOMINAL')
+
+    # name_convention = 'SlicerTwisted_006f6a_POP_astig_'
+
+    name_convention = 'SlicerTwisted_006f6a_POP_Zk 1_'
+    path_zemax = os.path.join('zemax_files', 'ASTIG_0_2')
 
     pop_slicer = pop.POP_Slicer()
 
     if sys.argv[-1] == 'load':
-        raw_data = np.load('raw_data.npy')
-        raw_info = np.load('raw_info.npy')
+        raw_data = np.load('raw_astig0_2_data.npy')
+        raw_info = np.load('raw_astig0_2_info.npy')
         pop_slicer.beam_data = raw_data
         pop_slicer.beam_info = raw_info
     else:
@@ -23,9 +28,14 @@ if __name__ == "__main__":
         # Loading the files takes so long...!
         raw_data = pop_slicer.beam_data.copy()
         raw_info = pop_slicer.beam_info.copy()
+        np.save('raw_data', raw_data)
+        np.save('raw_info', raw_info)
 
-    pop_slicer.crop_arrays(N_pix=256)
+    pop_slicer.crop_arrays(N_pix=128)
     grids, resampled_data = pop_slicer.resample_grids(mode='pyresample')
+    x_min, x_max = pop_slicer.x_array[0], pop_slicer.x_array[-1]
+    y_min, y_max = pop_slicer.y_array[0], pop_slicer.y_array[-1]
+    extends = [x_min, x_max, y_min, y_max]
 
     no_resampling = np.sum(pop_slicer.cropped_beam_data, axis=0)
 
@@ -38,34 +48,48 @@ if __name__ == "__main__":
     final_data = np.concatenate((resampled[np.newaxis,:,:], resampled_data))
     pop.save_to_fits(os.path.join('fits_files','SlicerTwisted'), final_data)
 
-    """ Quick Way: Disregard any resampling """
-    plt.figure()
-    plt.imshow(no_resampling, origin='lower', vmin=v_min, vmax=v_max, cmap='jet')
-    plt.colorbar()
-    plt.title('Without Resampling')
+    # """ Quick Way: Disregard any resampling """
+    # plt.figure()
+    # plt.imshow(no_resampling, extent=extends, origin='lower', vmin=v_min, vmax=v_max, cmap='jet')
+    # plt.colorbar()
+    # plt.xlabel('X [mm]')
+    # plt.ylabel('Y [mm]')
+    # plt.title('Without Resampling')
+    #
+    # plt.figure()
+    # plt.imshow(np.log10(no_resampling), extent=extends, origin='lower', vmin=np.log10(v_min), vmax=np.log10(v_max), cmap='jet')
+    # plt.colorbar()
+    # plt.xlabel('X [mm]')
+    # plt.ylabel('Y [mm]')
+    # plt.title('Without Resampling (Log10 scale)')
+
+    """ Do the proper resampling """
+
+    cmap = 'jet'
 
     plt.figure()
-    plt.imshow(np.log10(no_resampling), origin='lower', vmin=np.log10(v_min), vmax=np.log10(v_max), cmap='jet')
+    plt.imshow(resampled, extent=extends, origin='lower', vmin=v_min, vmax=v_max, cmap=cmap)
     plt.colorbar()
-    plt.title('Without Resampling (Log10 scale)')
-
-    """ Slow Painful Way: Do the proper resampling """
-    plt.figure()
-    plt.imshow(resampled, origin='lower', vmin=v_min, vmax=v_max, cmap='jet')
-    plt.colorbar()
+    plt.xlabel('X [mm]')
+    plt.ylabel('Y [mm]')
     plt.title('With Resampling')
 
     plt.figure()
-    plt.imshow(np.log10(resampled), origin='lower', vmin=np.log10(v_min), vmax=np.log10(v_max), cmap='jet')
+    plt.imshow(np.log10(resampled), extent=extends,origin='lower',
+               vmin=np.log10(v_min), vmax=np.log10(v_max), cmap=cmap)
     plt.colorbar()
+    plt.xlabel('X [mm]')
+    plt.ylabel('Y [mm]')
     plt.title('With Resampling (Log10 scale)')
 
-    """ Comparison difference """
-    plt.figure()
-    plt.imshow((np.abs(no_resampling - resampled)), origin='lower', cmap='jet')
-    plt.colorbar()
-    # plt.title('Residual')
-    plt.title('Relative difference (With - Without)/Without [log10 scale]')
-
+    # """ Comparison difference """
+    # plt.figure()
+    # plt.imshow((np.abs(no_resampling - resampled)), extent=extends, origin='lower', cmap='jet')
+    # plt.colorbar()
+    # plt.xlabel('X [mm]')
+    # plt.ylabel('Y [mm]')
+    # # plt.title('Residual')
+    # plt.title('Relative difference (With - Without)/Without [log10 scale]')
+    #
 
     plt.show()

@@ -45,7 +45,11 @@ def read_beam_file(file_name, mode='irradiance'):
 
     if mode=='irradiance':
         irradiance = (re ** 2 + im ** 2).T
-        return (nx, ny), (dx, dy), irradiance
+        power = np.sum(irradiance)
+        print('Total Power: ', power)
+        p = np.max(irradiance)
+        print('Peak Irradiance: %f [W/m^2]' %(p/area))
+        return (nx, ny), (dx, dy), irradiance, power
 
     if mode=='phase':
         phase = np.arctan2(im, re).T
@@ -59,6 +63,7 @@ def read_all_zemax_files(path_zemax, name_convention, start=1, finish=55, mode='
     """
     info = []
     data = []
+    powers = []
 
     for k in np.arange(start, finish+1):
         print('\n======================================')
@@ -73,17 +78,19 @@ def read_all_zemax_files(path_zemax, name_convention, start=1, finish=55, mode='
 
         print('Reading Beam File: ', file_id)
 
-        NM, deltas, beam_data = read_beam_file(file_name, mode=mode)
+        NM, deltas, beam_data, _power = read_beam_file(file_name, mode=mode)
         Dx, Dy = NM[0] * deltas[0], NM[1] * deltas[1]
         info.append([k, Dx, Dy])
         data.append(beam_data)
+        powers.append(powers)
 
     beam_info = np.array(info)
     irradiance_values = np.array(data)
+    powers = np.array(powers)
 
     # print('\nTime spent LOADING files: %.1f [sec]' %(tm() - start))
 
-    return beam_info, irradiance_values
+    return beam_info, irradiance_values, powers
 
 # ============================================================================== #
 #                                GRID RESAMPLING                                 #
@@ -100,9 +107,10 @@ class POP_Slicer(object):
         pass
 
     def get_zemax_files(self, zemax_path, name_convention, start, finish, mode):
-        _info, _data = read_all_zemax_files(zemax_path, name_convention, start, finish, mode)
+        _info, _data, _powers = read_all_zemax_files(zemax_path, name_convention, start, finish, mode)
         self.beam_info = _info
         self.beam_data = _data
+        self.powers = _powers
 
     def crop_arrays(self, N_pix=512):
 
@@ -202,6 +210,8 @@ class POP_Slicer(object):
         # Create the Reference Grid
         x = np.linspace(-x_max/2., x_max/2, num=N, endpoint=True)
         y = np.linspace(-y_max/2., y_max/2, num=M, endpoint=True)
+        self.x_array = x
+        self.y_array = y
 
         xx_ref, yy_ref = np.meshgrid(x, y, indexing='ij')
         ref_grid = np.array([xx_ref, yy_ref])
