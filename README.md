@@ -14,4 +14,6 @@ Using Zemax POP we can generate thousands of example PSFs with varying NCPA phas
 
 We can use those PSFs to train a Neural Network so that it can recognize the Zernike coefficients of the underlying NCPA phase maps just by looking at the image PSFs. 
 
+In order to avoid any degeneracy in the transformation from phase map to PSF intensity, we repeat the POP analysis for each phase including an additional defocus term. Thus, the images we pass to the NN containg pairs of _nominal_ and _defocused_ slicer PSFs, just like the one shown below.
+
 ![Alt text](examplePSF.png?raw=true "Title")
