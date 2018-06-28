@@ -12,7 +12,6 @@ from numpy.random import RandomState
 import matplotlib.pyplot as plt
 import pop_methods as pop
 from sklearn.neural_network import MLPRegressor
-import time
 
 # Slices
 slice_start = 24
