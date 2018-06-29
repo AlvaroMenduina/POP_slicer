@@ -21,6 +21,16 @@ from keras.optimizers import RMSprop
 
 import keras.backend as K
 
+def data_augmentation(data_set):
+    copy_set = data_set.copy()
+    extended_data_set = data_set.copy()
+    photon = [100., 1000., 10000.]
+    for f in photon:
+        noise = np.random.poisson(lam=f * copy_set) / f
+        extended_data_set = np.concatenate((extended_data_set, noise), axis=0)
+    return extended_data_set
+
+
 class WGAN():
     def __init__(self, image_shape):
         self.N, self.M = image_shape
@@ -43,7 +53,7 @@ class WGAN():
         self.generator = self.build_generator()
 
         # The generator takes noise as input and generated imgs
-        z = Input(shape=(100,))
+        z = Input(shape=(self.latent_dim,))
         img = self.generator(z)
 
         # For the combined model we will only train the generator
@@ -65,16 +75,23 @@ class WGAN():
 
         model = Sequential()
 
+        # model.add(Dense(256 * 7 * 7, activation="relu", input_dim=self.latent_dim))
+        # model.add(Reshape((7, 7, 256)))
+        # model.add(UpSampling2D())
+
         model.add(Dense(128 * 7 * 7, activation="relu", input_dim=self.latent_dim))
         model.add(Reshape((7, 7, 128)))
         model.add(UpSampling2D())
+
         model.add(Conv2D(128, kernel_size=4, padding="same"))
         model.add(BatchNormalization(momentum=0.8))
         model.add(Activation("relu"))
         model.add(UpSampling2D())
+
         model.add(Conv2D(64, kernel_size=4, padding="same"))
         model.add(BatchNormalization(momentum=0.8))
         model.add(Activation("relu"))
+
         model.add(Conv2D(self.channels, kernel_size=4, padding="same"))
         model.add(Activation("tanh"))
 
@@ -117,8 +134,6 @@ class WGAN():
 
     def train(self, epochs, batch_size=128, sample_interval=50):
 
-        # Load the dataset
-        # (X_train, _), (_, _) = mnist.load_data()
         data_set = os.path.join(path_results, 'GAN_PSF.npz')
         compressed = np.load(data_set)
         X_train = compressed['psf']
@@ -128,6 +143,9 @@ class WGAN():
         pix_min = N // 2 - 28//2
         pix_max = M // 2 + 28//2
         X_train = X_train[:, pix_min:pix_max, pix_min:pix_max]
+
+        # Run Data Augmentation (Poisson Noise)
+        X_train = data_augmentation(X_train)
 
         # Show some random PSFs
         idx = np.random.randint(0, X_train.shape[0], 25)
@@ -164,6 +182,7 @@ class WGAN():
                 # Select a random batch of images
                 idx = np.random.randint(0, X_train.shape[0], batch_size)
                 imgs = X_train[idx]
+                # print(np.mean(imgs))
                 # print('Batch shape: ', imgs.shape)
 
                 # Sample noise as generator input
@@ -226,4 +245,4 @@ if __name__ == "__main__":
 
     image_shape = (28, 28)
     wgan = WGAN(image_shape)
-    wgan.train(epochs=10000, batch_size=32, sample_interval=50)
+    wgan.train(epochs=5000, batch_size=128, sample_interval=50)
